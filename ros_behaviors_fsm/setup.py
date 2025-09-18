@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'finite_state_controller = ros_behaviors_fsm.finite_state_controller:main',
         ],
     },
 )
