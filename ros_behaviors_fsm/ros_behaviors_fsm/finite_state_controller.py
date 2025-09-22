@@ -256,16 +256,15 @@ class BehaviorFSM(Node):
             )
 
             while spin_proc.poll() is None:
-                # Wait indefinitely until the spin process exits on its own.
+                # Wait until the spin process exits
                 time.sleep(0.05)
         except Exception as e:
             self.get_logger().error(f"Failed to launch spin: {e}")
-        # Always resume FOLLOW after completing the spin
+        # Resume FOLLOW after completing the spin
         self.get_logger().info("Resuming FOLLOW after spin.")
         self._spawn_behavior(['ros2', 'run', 'ros_behaviors_fsm', 'person_follower'])
         self.mode = Mode.FOLLOW
         self._last_seen_ts = time.monotonic() if self._has_target_now else None
-
         self._last_spin_ts = time.monotonic()
         self._spin_in_progress.clear()
 
@@ -305,10 +304,7 @@ class BehaviorFSM(Node):
         try:
             self.get_logger().info("Stopping current behavior...")
             os.killpg(os.getpgid(self.child_proc.pid), signal.SIGINT)
-            waited = 0.0
-            while self.child_proc.poll() is None and waited < 2.0:
-                time.sleep(0.1)
-                waited += 0.1
+            time.sleep(0.2)
         finally:
             self.child_proc = None
 
