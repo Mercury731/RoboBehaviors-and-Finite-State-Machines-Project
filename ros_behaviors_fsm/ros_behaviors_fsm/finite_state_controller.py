@@ -64,7 +64,6 @@ class BehaviorFSM(Node):
 
         # Bumper debounce/cooldown parameters
         self.declare_parameter('bumper_cooldown_s', 0.5)
-        self.declare_parameter('bumper_min_msgs', 1)
 
         # Real robot bump topic and Gazebo topic
         self.declare_parameter('bump_topic', '/bump')             # neato
@@ -82,7 +81,6 @@ class BehaviorFSM(Node):
         self.poll_dt = 1.0 / max(self.poll_rate_hz, 1.0)
 
         self._bumper_cooldown_s = float(self.get_parameter('bumper_cooldown_s').value)
-        self._bumper_min_msgs = int(self.get_parameter('bumper_min_msgs').value)
 
         self._spin_interval_s = float(self.get_parameter('spin_interval_s').value)
         self._spin_pkg = str(self.get_parameter('spin_pkg').value)
@@ -132,7 +130,7 @@ class BehaviorFSM(Node):
         self.get_logger().info(
             f"BehaviorFSM ready. scan_threshold={self.object_present_threshold_m:.2f} m, "
             f"lost_timeout={self.lost_object_timeout_s:.1f} s, "
-            f"bumper_min_msgs={self._bumper_min_msgs}, bumper_cooldown={self._bumper_cooldown_s:.2f}s, "
+            f"bumper_cooldown={self._bumper_cooldown_s:.2f}s, "
             f"spin_interval={self._spin_interval_s:.1f}s, "
             f"gazebo_bumper_topic='{self._gazebo_bumper_topic}', bump_topic='{self._bump_topic}'"
         )
@@ -140,8 +138,6 @@ class BehaviorFSM(Node):
     # -------------------- Dynamic /bump subscription --------------------
 
     def _ensure_bump_subscription(self):
-        if self._bump_sub_dyn is not None or not rclpy.ok():
-            return
         try:
             msg_type_str = subprocess.check_output(
                 ['ros2', 'topic', 'type', self._bump_topic],
@@ -178,19 +174,6 @@ class BehaviorFSM(Node):
                         pressed = pressed or (int(v) != 0)
                     except Exception:
                         pass
-        else:
-            for k in ('left_front', 'left_side', 'right_front', 'right_side', 'left', 'right', 'front'):
-                if hasattr(msg, k):
-                    v = getattr(msg, k)
-                    if isinstance(v, bool) and v:
-                        pressed = True
-                        break
-                    try:
-                        if int(v) != 0:
-                            pressed = True
-                            break
-                    except Exception:
-                        pass
 
         self._register_bump_event(pressed)
 
@@ -212,7 +195,7 @@ class BehaviorFSM(Node):
 
         should_switch = (
             pressed
-            and self._bumper_contact_streak >= self._bumper_min_msgs
+            and self._bumper_contact_streak >= 1
             and (now - self._last_bumper_switch_ts) >= self._bumper_cooldown_s
             and self.mode != Mode.FOLLOW
         )
