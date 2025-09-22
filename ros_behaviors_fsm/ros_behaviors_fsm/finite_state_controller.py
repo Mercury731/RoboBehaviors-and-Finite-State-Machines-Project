@@ -309,18 +309,6 @@ class BehaviorFSM(Node):
             while self.child_proc.poll() is None and waited < 2.0:
                 time.sleep(0.1)
                 waited += 0.1
-            if self.child_proc.poll() is None:
-                self.get_logger().warn("Behavior not exiting; sending SIGTERM.")
-                os.killpg(os.getpgid(self.child_proc.pid), signal.SIGTERM)
-            waited2 = 0.0
-            while self.child_proc.poll() is None and waited2 < 1.0:
-                time.sleep(0.1)
-                waited2 += 0.1
-            if self.child_proc.poll() is None:
-                self.get_logger().error("Force-killing behavior (SIGKILL).")
-                os.killpg(os.getpgid(self.child_proc.pid), signal.SIGKILL)
-        except ProcessLookupError:
-            pass
         finally:
             self.child_proc = None
 
@@ -339,7 +327,6 @@ class BehaviorFSM(Node):
         finally:
             super().destroy_node()
 
-
 def main(args=None):
     rclpy.init(args=args)
     node = BehaviorFSM()
@@ -350,7 +337,6 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()
