@@ -53,8 +53,8 @@ class BehaviorFSM(Node):
         super().__init__('behavior_fsm_supervisor')
 
         # ---- Parameters
-        self.declare_parameter('object_present_threshold_m', 1.5)
-        self.declare_parameter('lost_object_timeout_s', 2.0)
+        self.declare_parameter('object_present_threshold_m', 1.5) #how close something must be in the LaserScan to count as a “target”.
+        self.declare_parameter('lost_object_timeout_s', 8.0) #how long with no target before FOLLOW falls back to PENTAGON.
         self.declare_parameter('poll_rate_hz', 10.0)
 
         # Bumper debounce/cooldown
@@ -72,7 +72,7 @@ class BehaviorFSM(Node):
         self.declare_parameter('spin_exec', 'spin_360')
 
         self.object_present_threshold_m = float(self.get_parameter('object_present_threshold_m').value)
-        self.lost_object_timeout_s = float(self.get_parameter('lost_object_timeout_s').value)
+        self.lost_object_timeout_s = float(self.get_parameter('lost_object_timeout_s').value) 
         self.poll_rate_hz = float(self.get_parameter('poll_rate_hz').value)
         self.poll_dt = 1.0 / max(self.poll_rate_hz, 1.0)
 
@@ -168,7 +168,6 @@ class BehaviorFSM(Node):
 
         pressed = False
         if isinstance(d, dict):
-            # Prefer known field names if present
             preferred = ('left_front', 'left_side', 'right_front', 'right_side')
             any_preferred = any(k in d for k in preferred)
             keys = preferred if any_preferred else tuple(d.keys())
