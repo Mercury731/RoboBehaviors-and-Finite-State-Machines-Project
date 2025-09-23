@@ -1,8 +1,8 @@
 """
-Finite-State Supervisor for Behavior Switching (+ periodic 360° spin during FOLLOW)
+Finite-State Supervisor for Behavior Switching and 360 Degree Spin
 ===================================================================================
 
-This module implements a ROS 2 node (`BehaviorFSM`) that supervises and switches between two
+This FSM implements a ROS 2 node (`BehaviorFSM`) that supervises and switches between two
 pre-existing behaviors that are launched as **subprocesses**:
 
 - `draw_pentagon`  – time-based open-loop driving that traces a pentagon.
@@ -12,14 +12,7 @@ While the FOLLOW behavior is active, the supervisor periodically pauses FOLLOW, 
 separate `spin_360` node to perform a full rotation, and then resumes FOLLOW. This spin
 is scheduled on a timer-like background thread and obeys a configurable interval.
 
-The supervisor also supports **real robot** and **Gazebo** bumper inputs:
-
-- Gazebo: subscribes to `/bumper` (`gazebo_msgs/ContactsState`).
-- Real hardware: dynamically discovers and subscribes to `/bump` (arbitrary message type),
-  treating any non-zero/true field (e.g., `left_front`, `left_side`, `right_front`, `right_side`)
-  as a bump. Dynamic message import avoids compile-time dependencies on a specific HW message.
-
-Console entry points assumed to exist (provided by your package setup):
+Console entry points assumed to exist:
   'person_follower = ros_behaviors_fsm.person_follower:main'
   'draw_pentagon   = ros_behaviors_fsm.draw_pentagon:main'
   'spin_360        = ros_behaviors_fsm.spin_360:main'
@@ -33,26 +26,25 @@ import sys
 import time
 from enum import Enum
 from threading import Thread, Event, Lock
-
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from gazebo_msgs.msg import ContactsState
 
-# For dynamic message loading & safe dict conversion (real robot /bump)
+# For dynamic message loading & safe dict conversion (/bump)
 from rosidl_runtime_py.utilities import get_message
 from rosidl_runtime_py.convert import message_to_ordereddict
 
 
 class Mode(Enum):
-    """Behavior modes managed by the supervisor."""
+    """Behavior modes"""
     PENTAGON = 0   # Actively running the draw_pentagon behavior
     FOLLOW = 1     # Actively running the person_follower behavior
 
 
 class BehaviorFSM(Node):
-    """Finite-state supervisor for behavior switching and scheduled spins."""
+    """Finite-state for behavior switching and scheduled spins."""
 
     def __init__(self):
         super().__init__('finite_state_controller')
@@ -100,15 +92,12 @@ class BehaviorFSM(Node):
         self._bump_sub_dyn = None
         self.create_timer(1.0, self._ensure_bump_subscription)  # retry every second until success
 
-        # ---- Internal state
         self.mode = Mode.PENTAGON          # Start in PENTAGON behavior
         self.child_proc = None             # Handle to the current behavior subprocess
 
-        # LaserScan bookkeeping
         self._last_seen_ts = None          # monotonic timestamp when target last seen
         self._has_target_now = False       # last "instantaneous" detection result
 
-        # Bumper debounce/cooldown tracking
         self._bumper_contact_streak = 0
         self._last_bumper_switch_ts = 0.0
 
@@ -135,7 +124,6 @@ class BehaviorFSM(Node):
             f"gazebo_bumper_topic='{self._gazebo_bumper_topic}', bump_topic='{self._bump_topic}'"
         )
 
-    # -------------------- Dynamic /bump subscription --------------------
 
     def _ensure_bump_subscription(self):
         try:
