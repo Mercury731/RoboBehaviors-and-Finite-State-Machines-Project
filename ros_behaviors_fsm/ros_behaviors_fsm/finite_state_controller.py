@@ -49,71 +49,57 @@ class BehaviorFSM(Node):
     def __init__(self):
         super().__init__('finite_state_controller')
 
-        # ---- Parameters (declarations + reads)
+        # Declare parameters
         self.declare_parameter('object_present_threshold_m', 1.5)  # LaserScan threshold for target presence (meters)
         self.declare_parameter('lost_object_timeout_s', 8.0)       # FOLLOW → PENTAGON fallback timeout (seconds)
-        self.declare_parameter('poll_rate_hz', 10.0)               # _tick rate (Hz)
-
-        # Bumper debounce/cooldown parameters
-        self.declare_parameter('bumper_cooldown_s', 0.5)
-
-        # Real robot bump topic and Gazebo topic
+        self.declare_parameter('poll_rate_hz', 10.0)               # tick rate (Hz): how often the FSM checks for mode switches
+        self.declare_parameter('bumper_cooldown_s', 0.5)           # min time between bump events (seconds)
         self.declare_parameter('bump_topic', '/bump')             # neato
         self.declare_parameter('gazebo_bumper_topic', 'bumper')   # gazebo
-
-        # Spin controls (FOLLOW mode)
-        self.declare_parameter('spin_interval_s', 15.0)
+        self.declare_parameter('spin_interval_s', 15.0)           # min time between 360 spins (seconds)
         self.declare_parameter('spin_pkg', 'ros_behaviors_fsm')
         self.declare_parameter('spin_exec', 'spin_360')
 
         # Resolve parameter values
-        self.object_present_threshold_m = float(self.get_parameter('object_present_threshold_m').value)
+        self.object_present_threshold_m = float(self.get_parameter('object_present_threshold_m').value) 
         self.lost_object_timeout_s = float(self.get_parameter('lost_object_timeout_s').value)
         self.poll_rate_hz = float(self.get_parameter('poll_rate_hz').value)
-        self.poll_dt = 1.0 / max(self.poll_rate_hz, 1.0)
-
+        self.poll_dt = 1.0 / max(self.poll_rate_hz, 1.0)  # polling interval (seconds) ticks
         self._bumper_cooldown_s = float(self.get_parameter('bumper_cooldown_s').value)
-
+        self._bump_topic = str(self.get_parameter('bump_topic').value)
+        self._gazebo_bumper_topic = str(self.get_parameter('gazebo_bumper_topic').value)
         self._spin_interval_s = float(self.get_parameter('spin_interval_s').value)
         self._spin_pkg = str(self.get_parameter('spin_pkg').value)
         self._spin_exec = str(self.get_parameter('spin_exec').value)
 
-        self._bump_topic = str(self.get_parameter('bump_topic').value)
-        self._gazebo_bumper_topic = str(self.get_parameter('gazebo_bumper_topic').value)
-
-        # ---- Publishers / Subscribers
+        # Publishers / Subscribers
         self.vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.create_subscription(LaserScan, 'scan', self._on_scan, 10)
-
-        # Gazebo bumper (ContactsState): any contact ⇒ bump
         self.create_subscription(ContactsState, self._gazebo_bumper_topic, self._on_bumper_contacts, 10)
 
         # Real robot bump subscriber: resolve & subscribe dynamically (retries)
-        self._bump_sub_dyn = None
-        self.create_timer(1.0, self._ensure_bump_subscription)  # retry every second until success
+        self._bump_sub = None
+        self.create_timer(1.0, self._ensure_bump_subscription)  # subscribe to the bump topic, retry until it succeeds
+        self.mode = Mode.PENTAGON         
+        self.child_proc = None             # Stores the running process for the current behavior
 
-        self.mode = Mode.PENTAGON          # Start in PENTAGON behavior
-        self.child_proc = None             # Handle to the current behavior subprocess
+        self._last_seen_ts = None          # how long the target has been out of view.
+        self._has_target_now = False       # whether the target is currently detected
 
-        self._last_seen_ts = None          # monotonic timestamp when target last seen
-        self._has_target_now = False       # last "instantaneous" detection result
-
-        self._bumper_contact_streak = 0
-        self._last_bumper_switch_ts = 0.0
+        self._bumper_contact_streak = 0   # counts consecutive bump detections
+        self._last_bumper_switch_ts = 0.0 # time when last bump-triggered switch happened
 
         # Spin scheduler state
         self._last_spin_ts = 0.0
         self._spin_thread = Thread(target=self._spin_scheduler_loop, daemon=True)
         self._spin_in_progress = Event()
-        self._proc_lock = Lock()           # guard child_proc mutation between threads
+        self._proc_lock = Lock()  # ensures only one thread can start/stop the behavior process at a time
 
-        # Start default behavior
         self._start_pentagon()
 
         # Timer to evaluate FOLLOW → PENTAGON fallback
         self.create_timer(self.poll_dt, self._tick)
 
-        # Kick off spin scheduler
         self._spin_thread.start()
 
         self.get_logger().info(
@@ -134,7 +120,7 @@ class BehaviorFSM(Node):
             if not msg_type_str:
                 return
             MsgT = get_message(msg_type_str)
-            self._bump_sub_dyn = self.create_subscription(MsgT, self._bump_topic, self._on_bump_generic, 10)
+            self._bump_sub = self.create_subscription(MsgT, self._bump_topic, self._on_bump_generic, 10)
             self.get_logger().info(f"Subscribed to '{self._bump_topic}' (type: {msg_type_str}).")
         except subprocess.CalledProcessError:
             pass
@@ -295,8 +281,6 @@ class BehaviorFSM(Node):
             time.sleep(0.2)
         finally:
             self.child_proc = None
-
-    # -------------------- Utilities --------------------
 
     def _publish_stop(self):
         msg = Twist()
