@@ -266,7 +266,7 @@ class BehaviorFSM(Node):
                 self._perform_spin_once()
 
     def _perform_spin_once(self):
-        """
+        """ (Co-Pilot was used to write this docstring)
         Perform a single 360° spin while in FOLLOW mode, then resume following.
 
         This method is called by the spin scheduler when it is time to perform a spin. It:
@@ -324,6 +324,16 @@ class BehaviorFSM(Node):
             self._last_spin_ts = time.monotonic()
 
     def _spawn_behavior(self, cmd):
+        """ (Co-Pilot was used to write this docstring)
+        Start a new subprocess to run the specified robot behavior.
+
+        This method first stops any currently running behavior subprocess to ensure only one behavior runs at a time.
+        It then launches the new behavior as a subprocess using the provided command list. 
+        If launching the subprocess fails, it logs an error and clears the process handle.
+
+        Args:
+            cmd (list of str): The command and arguments to launch the new behavior as a subprocess.
+        """
         self._kill_child()
         self.get_logger().info(f"Launching behavior: {' '.join(cmd)}")
         try:
