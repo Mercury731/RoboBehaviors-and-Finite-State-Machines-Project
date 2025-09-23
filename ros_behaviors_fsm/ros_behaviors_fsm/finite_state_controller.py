@@ -112,6 +112,12 @@ class BehaviorFSM(Node):
 
 
     def _ensure_bump_subscription(self):
+        """ (Co-Pilot was used to write this docstring)
+        Try to subscribe to the bump sensor topic for the neato.
+        This function is called periodically until the subscription succeeds.
+        It dynamically determines the message type of the bump topic and creates the subscriber.
+        If the topic is not available yet, it will keep retrying every second.
+        """
         try:
             msg_type_str = subprocess.check_output(
                 ['ros2', 'topic', 'type', self._bump_topic],
@@ -128,6 +134,11 @@ class BehaviorFSM(Node):
             self.get_logger().warn(f"Waiting for bump topic '{self._bump_topic}': {e}")
 
     def _on_bump_generic(self, msg):
+        """
+        Converts the message to a dictionary and checks for any pressed bumpers.
+        Handles both boolean and integer fields (was trying to code this without access to the neato).
+        If any bumper is pressed, triggers the bump event logic.
+        """
         try:
             d = message_to_ordereddict(msg)
         except Exception:
@@ -151,15 +162,31 @@ class BehaviorFSM(Node):
 
         self._register_bump_event(pressed)
 
-    # -------------------- Gazebo ContactsState path --------------------
-
     def _on_bumper_contacts(self, msg: ContactsState):
+        """
+        Checks if there is any contact in the message and triggers the bump event logic if so.
+        Used to detect bumps in Gazebo.
+        """
         has_contact = len(msg.states) > 0
         self._register_bump_event(has_contact)
 
-    # -------------------- Unified bump handling --------------------
 
     def _register_bump_event(self, pressed: bool):
+        """ (Co-Pilot was used to write this docstring)
+        Handle bump (collision) events from neato or simulation.
+
+        This function tracks consecutive bump detections and enforces a cooldown period between mode switches.
+        When a valid bump is detected and the cooldown has elapsed, the FSM switches the robot to FOLLOW mode.
+
+        The switch to FOLLOW mode occurs only if all of the following are true:
+            - A bump is currently detected (pressed is True)
+            - There is at least one consecutive bump event (contact streak >= 1)
+            - Enough time has passed since the last bump-triggered switch (cooldown period)
+            - The robot is not already in FOLLOW mode
+
+        Args:
+            pressed (bool): True if a bump is currently detected, False otherwise.
+        """
         now = time.monotonic()
 
         if pressed:
@@ -180,6 +207,17 @@ class BehaviorFSM(Node):
             self._switch_to_follow()
 
     def _on_scan(self, msg: LaserScan):
+        """ (Co-Pilot was used to write this docstring)
+        Function for LaserScan messages to detect if a target object is present within a threshold distance.
+
+        Scans all valid range readings in the incoming LaserScan message. If any reading is within the
+        configured threshold (object_present_threshold_m), sets the internal flag to indicate a target is present
+        and updates the timestamp for when the target was last seen. This is used by the FSM to decide when to
+        switch between FOLLOW and PENTAGON modes.
+
+        Args:
+            msg (LaserScan): The incoming LaserScan message containing range data.
+        """
         thr = self.object_present_threshold_m
         has_target = any(
             (d is not None) and (not math.isinf(d)) and (not math.isnan(d)) and (d > 0.0) and (d <= thr)
@@ -189,9 +227,15 @@ class BehaviorFSM(Node):
         if has_target:
             self._last_seen_ts = time.monotonic()
 
-    # -------------------- Timer: FOLLOW fallback --------------------
-
     def _tick(self):
+        """
+        Periodic timer callback to check if the FOLLOW mode should be exited due to target loss.
+
+        If the FSM is in FOLLOW mode, this function checks how long it has been since the target was last seen.
+        If the target has been lost for longer than the configured timeout (lost_object_timeout_s), and a spin
+        is not currently in progress, the FSM switches back to PENTAGON mode. This ensures the robot does not
+        continue following when the target is no longer detected.
+        """
         if self.mode == Mode.FOLLOW:
             now = time.monotonic()
             no_view_duration = float('inf') if self._last_seen_ts is None else (now - self._last_seen_ts)
@@ -204,6 +248,15 @@ class BehaviorFSM(Node):
     # -------------------- Spin scheduler --------------------
 
     def _spin_scheduler_loop(self):
+        """ (Co-Pilot was used to write this docstring)
+        Background thread loop that schedules periodic 360° spins while in FOLLOW mode.
+
+        This loop runs continuously as long as the ROS node is active. Every 0.1 seconds, it checks if the FSM
+        is in FOLLOW mode. If so, and if enough time has passed since the last spin (spin_interval_s), and no
+        spin is currently in progress, it triggers a new spin by calling _perform_spin_once().
+
+        This ensures the robot periodically pauses following, performs a 360° spin, and then resumes following.
+        """
         while rclpy.ok():
             time.sleep(0.1)
             if self.mode != Mode.FOLLOW:
@@ -213,6 +266,19 @@ class BehaviorFSM(Node):
                 self._perform_spin_once()
 
     def _perform_spin_once(self):
+        """
+        Perform a single 360° spin while in FOLLOW mode, then resume following.
+
+        This method is called by the spin scheduler when it is time to perform a spin. It:
+            - Ensures the FSM is in FOLLOW mode.
+            - Sets a flag to indicate a spin is in progress.
+            - Stops the current behavior process (if any) to avoid conflicts.
+            - Launches the configured spin node as a subprocess and waits for it to finish.
+            - After the spin completes, resumes the person_follower behavior and updates relevant state.
+            - Clears the spin-in-progress flag so future spins can be scheduled.
+
+        If launching the spin process fails, an error is logged and the FSM attempts to recover by resuming FOLLOW.
+        """
         if self.mode != Mode.FOLLOW:
             return
 
@@ -228,7 +294,6 @@ class BehaviorFSM(Node):
             spin_proc = subprocess.Popen(
                 spin_cmd, stdout=sys.stdout, stderr=sys.stderr, preexec_fn=os.setsid
             )
-
             while spin_proc.poll() is None:
                 # Wait until the spin process exits
                 time.sleep(0.05)
