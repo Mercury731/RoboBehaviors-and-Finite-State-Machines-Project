@@ -58,15 +58,18 @@ One paragraph on your goal, environment (ROS 2 Humble, Neato), and outcomes.
 - Launch files
 
 ### State Diagram
+
 ```mermaid
 stateDiagram-v2
-    [*] --> DRAW_PENTAGRAM
-
-    DRAW_PENTAGRAM --> DRAW_PENTAGRAM: continue until bump
-    DRAW_PENTAGRAM --> PERSON_FOLLOW: bump_detected
-
-    PERSON_FOLLOW --> SPIN_360: follow_time_elapsed
-    SPIN_360 --> PERSON_FOLLOW: spin_complete
+    [*] --> PENTAGON
+    PENTAGON --> FOLLOW: bump_detected
+    FOLLOW --> PENTAGON: lost_target_timeout
+    FOLLOW --> SPIN: spin_scheduled
+    SPIN --> FOLLOW: spin_completed
+    PENTAGON --> IDLE: estop
+    FOLLOW --> IDLE: estop
+    SPIN --> IDLE: estop
+    IDLE --> PENTAGON: estop_cleared
 ```
 
 ## Debugging & Tools
@@ -90,6 +93,9 @@ ros2 run ros_behaviors_fsm draw_pentagon
 ros2 run ros_behaviors_fsm spin_360
 ros2 run ros_behaviors_fsm person_follower
 
+# View FSM state topic (live state)
+ros2 topic echo /fsm/state
+
 # View RViz
 rviz2 -d $(ros2 pkg prefix ros_behaviors_fsm)/share/ros_behaviors_fsm/rviz/default.rviz
-
+```

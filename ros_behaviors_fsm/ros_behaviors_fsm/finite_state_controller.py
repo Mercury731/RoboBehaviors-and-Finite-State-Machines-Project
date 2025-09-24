@@ -108,34 +108,21 @@ class BehaviorFSM(Node):
         )
         self.state_pub = self.create_publisher(String, "fsm/state", 10)
 
-        def _publish_state(self):
-            msg = String()
-            msg.data = self.mode.name
-            self.state_pub.publish(msg)
-
-        # Real robot bump subscriber: resolve & subscribe dynamically (retries)
-        self._bump_sub = None
-        self.create_timer(
-            1.0, self._ensure_bump_subscription
-        )  # subscribe to the bump topic, retry until it succeeds
-        self.mode = Mode.PENTAGON
-        self.child_proc = None  # Stores the running process for the current behavior
-
-        self._last_seen_ts = None  # how long the target has been out of view.
-        self._has_target_now = False  # whether the target is currently detected
-
-        self._bumper_contact_streak = 0  # counts consecutive bump detections
-        self._last_bumper_switch_ts = (
-            0.0  # time when last bump-triggered switch happened
-        )
-
-        # Spin scheduler state
-        self._last_spin_ts = 0.0
+        # Initialize threading and synchronization primitives BEFORE calling _start_pentagon
         self._spin_thread = Thread(target=self._spin_scheduler_loop, daemon=True)
         self._spin_in_progress = Event()
         self._proc_lock = (
             Lock()
         )  # ensures only one thread can start/stop the behavior process at a time
+
+        # Initialize all state variables BEFORE calling _start_pentagon
+        self.child_proc = None  # Stores the running process for the current behavior
+        self._last_seen_ts = None  # how long the target has been out of view.
+        self._has_target_now = False  # whether the target is currently detected
+        self._bumper_contact_streak = 0  # counts consecutive bump detections
+        self._last_bumper_switch_ts = (
+            0.0  # time when last bump-triggered switch happened
+        )
 
         self._start_pentagon()
 
@@ -151,6 +138,11 @@ class BehaviorFSM(Node):
             f"spin_interval={self._spin_interval_s:.1f}s, "
             f"gazebo_bumper_topic='{self._gazebo_bumper_topic}', bump_topic='{self._bump_topic}'"
         )
+
+    def _publish_state(self):
+        msg = String()
+        msg.data = self.mode.name
+        self.state_pub.publish(msg)
 
     def _ensure_bump_subscription(self):
         """(Co-Pilot was used to write this docstring)
@@ -395,37 +387,15 @@ class BehaviorFSM(Node):
             cmd (list of str): The command and arguments to launch the new behavior as a subprocess.
         """
         self._publish_stop()
-
-    self._kill_child()
-    self.get_logger().info(f"Launching behavior: {' '.join(cmd)}")
-    try:
-        self.child_proc = subprocess.Popen(
-            cmd, stdout=sys.stdout, stderr=sys.stderr, preexec_fn=os.setsid
-        )
-    except Exception as e:
-        self.get_logger().error(f"Failed to start behavior '{cmd}': {e}")
-        self.child_proc = None
-
-
-def _kill_child(self):
-    if self.child_proc is None:
-        return
-    if self.child_proc.poll() is not None:
-        self.child_proc = None
-        return
-    try:
-        self.get_logger().info("Stopping current behavior...")
-        os.killpg(os.getpgid(self.child_proc.pid), signal.SIGINT)
-        # fallback terminate if it doesn’t die quickly
-        for _ in range(10):
-            if self.child_proc.poll() is not None:
-                break
-            time.sleep(0.05)
-        if self.child_proc.poll() is None:
-            os.killpg(os.getpgid(self.child_proc.pid), signal.SIGTERM)
-    finally:
-        self._publish_stop()
-        self.child_proc = None
+        self._kill_child()
+        self.get_logger().info(f"Launching behavior: {' '.join(cmd)}")
+        try:
+            self.child_proc = subprocess.Popen(
+                cmd, stdout=sys.stdout, stderr=sys.stderr, preexec_fn=os.setsid
+            )
+        except Exception as e:
+            self.get_logger().error(f"Failed to start behavior '{cmd}': {e}")
+            self.child_proc = None
 
     def _publish_stop(self):
         msg = Twist()
@@ -433,12 +403,45 @@ def _kill_child(self):
         msg.angular.z = 0.0
         self.vel_pub.publish(msg)
 
+    def _kill_child(self):
+        if self.child_proc is None:
+            return
+        if self.child_proc.poll() is not None:
+            self.child_proc = None
+            return
+        try:
+            self.get_logger().info("Stopping current behavior...")
+            os.killpg(os.getpgid(self.child_proc.pid), signal.SIGINT)
+            # fallback terminate if it doesn’t die quickly
+            for _ in range(10):
+                if self.child_proc.poll() is not None:
+                    break
+                time.sleep(0.05)
+            if self.child_proc.poll() is None:
+                os.killpg(os.getpgid(self.child_proc.pid), signal.SIGTERM)
+        finally:
+            self.child_proc = None
+
     def destroy_node(self):
         try:
             self._kill_child()
             self._publish_stop()
         finally:
             super().destroy_node()
+
+
+# QRT: state PENTAGON
+# QRT: state FOLLOW
+# QRT: state SPIN
+# QRT: state IDLE
+# QRT: transition PENTAGON FOLLOW bump_detected
+# QRT: transition FOLLOW PENTAGON lost_target_timeout
+# QRT: transition FOLLOW SPIN spin_scheduled
+# QRT: transition SPIN FOLLOW spin_completed
+# QRT: transition PENTAGON IDLE estop
+# QRT: transition FOLLOW IDLE estop
+# QRT: transition SPIN IDLE estop
+# QRT: transition IDLE PENTAGON estop_cleared
 
 
 def main(args=None):
