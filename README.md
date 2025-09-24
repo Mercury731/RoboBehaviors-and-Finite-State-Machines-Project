@@ -54,10 +54,6 @@ stateDiagram-v2
     FOLLOW --> PENTAGON: lost_target_timeout
     FOLLOW --> SPIN: spin_scheduled
     SPIN --> FOLLOW: spin_completed
-    PENTAGON --> IDLE: estop
-    FOLLOW --> IDLE: estop
-    SPIN --> IDLE: estop
-    IDLE --> PENTAGON: estop_cleared
 ```
 
 ## Debugging & Tools
@@ -74,16 +70,8 @@ colcon build --packages-select ros_behaviors_fsm
 source install/setup.bash
 
 # Run FSM (with params & RViz)
-ros2 launch ros_behaviors_fsm fsm.launch.py use_sim_time:=false
-
-# Run individual behaviors (debug)
-ros2 run ros_behaviors_fsm draw_pentagon
-ros2 run ros_behaviors_fsm spin_360
-ros2 run ros_behaviors_fsm person_follower
+ros2 run ros_behaviors_fsm finite_state_controller
 
 # View FSM state topic (live state)
 ros2 topic echo /fsm/state
-
-# View RViz
-rviz2 -d $(ros2 pkg prefix ros_behaviors_fsm)/share/ros_behaviors_fsm/rviz/default.rviz
 ```
