@@ -20,18 +20,6 @@ One paragraph on your goal, environment (ROS 2 Humble, Neato), and outcomes.
 
 ## Behaviors
 
-### Teleop
-
-- **Problem:** drive with keyboard safely.
-- **Approach:** non-blocking input → `/cmd_vel`; space stops.
-- **Notes:** E-stop; tuned v/w.
-
-### Drive Square
-
-- **Problem:** 1m x 1m square.
-- **Approach:** timing-based (v, t_forward, w, t_turn).
-- **Diagram/GIF:** (embed)
-
 ### 360
 
 - **Problem:**
