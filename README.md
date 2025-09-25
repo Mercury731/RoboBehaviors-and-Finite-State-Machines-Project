@@ -188,6 +188,17 @@ stateDiagram-v2
   physical model was a challenging task to solve. In the next project, I will
   try to use Python logger. Overall, I really enjoyed working on the project.
 
+## Code Structure
+
+Our code is organized around object-oriented principles, with each robot
+behavior (e.g., pentagon driving, spinning, person following) implemented as a
+separate Python class and ROS 2 node. The finite-state machine (FSM) itself is a
+class (`BehaviorFSM`) that inherits from `rclpy.node.Node` and manages state
+transitions, subprocess launching, and sensor/event handling. Behaviors are
+started and stopped as subprocesses, separation between nodes. The FSM class
+hold all state logic, parameters, and ROS publishers/subscribers, making it easy
+to add new behaviors or modify transitions.
+
 ## Debugging & Tools
 
 - RViz Visualizations
