@@ -82,14 +82,12 @@ Our solution for a person follower was twofold - first we used a LiDAR scan to l
 All Neatos come equipped with a LiDAR scanner, which we used to scan the area about our neato and return the closest point’s distance and angle. We then set our own Neato’s position and find the distance between the two points, using it as a speed modifier. This makes Neato's linear velocity proportional to the distance between it and the object, which acts as a basic control loop.
 Similarly, we take the difference between the polar coordinate of the object and the origin (aka Neato) and correct the angular velocity as well. This behavior was trickier to tune, as we ended up overshooting our closest object and would cause Neato to latch onto different objects entirely. Through trial and error and we ended up using control values of 0.01 proportional angular gain to help Neato center.
 
-## Code Structure
+### Finite State Controller
 
-- Package tree
-- Key nodes & responsibilities
-- Parameters (`config/params.yaml`)
-- Launch files
+- **Problem:**
+- **Approach:**
 
-### State Diagram
+#### State Diagram
 
 ```mermaid
 stateDiagram-v2
@@ -99,6 +97,26 @@ stateDiagram-v2
     FOLLOW --> SPIN: spin_scheduled
     SPIN --> FOLLOW: spin_completed
 ```
+
+#### Operation on Physcial Neato
+[▶️ Watch demo on YouTube](https://www.youtube.com/watch?v=IAnVcPswp0I)
+
+#### Operation in Gazebo
+[▶️ Watch demo on YouTube](https://youtu.be/Z0-pUuza7xg)
+
+## Challenges
+
+## Takeaways
+- **Owen:**
+- **Satchel:**
+- **Akshat**
+
+## Code Structure
+
+- Package tree
+- Key nodes & responsibilities
+- Parameters (`config/params.yaml`)
+- Launch files
 
 ## Debugging & Tools
 
