@@ -163,6 +163,10 @@ stateDiagram-v2
 
 [▶️ Watch demo on YouTube](https://youtu.be/Z0-pUuza7xg)
 
+### Testing person follower in Gazebo
+
+[▶️ Watch demo on YouTube](https://youtu.be/MQqfhTiEWlM)
+
 ## Challenges
 
 - Setting up the ROS environment was a challenge; once we got the Docker
