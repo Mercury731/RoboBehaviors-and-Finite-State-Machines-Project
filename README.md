@@ -188,13 +188,6 @@ stateDiagram-v2
   physical model was a challenging task to solve. In the next project, I will
   try to use Python logger. Overall, I really enjoyed working on the project.
 
-## Code Structure
-
-- Package tree
-- Key nodes & responsibilities
-- Parameters (`config/params.yaml`)
-- Launch files
-
 ## Debugging & Tools
 
 - RViz Visualizations
