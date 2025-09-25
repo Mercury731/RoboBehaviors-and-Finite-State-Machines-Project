@@ -87,7 +87,8 @@ reporting it’s completed a full loop and restarting.
 
 - **Diagram/GIF:**
 
-    <img src="Images/Corner Diagram.png" width="400"/>
+![Corner Diagram](Images/CornerDiagram.png)
+
 
 ### People Follower
 
@@ -110,7 +111,7 @@ reporting it’s completed a full loop and restarting.
 
 - **Diagram/GIF:**
 
-    <img src="Images/PeopleFollower.png" width="600"/>
+![Corner Diagram](Images/PeopleFollower.png)
 
 ### Finite State Controller
 
@@ -152,7 +153,7 @@ stateDiagram-v2
 
 #### QRT_Graph
 
-<img src="Images/rosgraphv2.png"/>
+![Rosgraphv2](Images/rosgraphv2.png)
 
 #### Operation on Physcial Neato
 
