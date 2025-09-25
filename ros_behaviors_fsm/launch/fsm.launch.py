@@ -1,3 +1,5 @@
+# Launch file for FSM node
+
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.substitutions import PathJoinSubstitution
@@ -24,6 +26,7 @@ def generate_launch_description():
                 output="screen",
                 parameters=[params, {"use_sim_time": use_sim_time}],
                 remappings=[
+                    # Remap scan and cmd_vel topics to robot namespace
                     ("scan", ["/", robot_ns, "/scan"]),
                     ("cmd_vel", ["/", robot_ns, "/cmd_vel"]),
                 ],

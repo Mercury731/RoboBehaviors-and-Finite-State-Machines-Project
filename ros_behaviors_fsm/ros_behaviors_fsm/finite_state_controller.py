@@ -42,8 +42,10 @@ from rosidl_runtime_py.convert import message_to_ordereddict
 class Mode(Enum):
     """Behavior modes"""
 
-    PENTAGON = 0  # Actively running the draw_pentagon behavior
-    FOLLOW = 1  # Actively running the person_follower behavior
+    PENTAGON = 0  # Driving pentagon shape
+    FOLLOW = 1  # Following detected person/object
+    SPIN = 2  # Performing a 360° spin
+    IDLE = 3  # Stopped/estop
 
 
 class BehaviorFSM(Node):
@@ -140,6 +142,7 @@ class BehaviorFSM(Node):
         )
 
     def _publish_state(self):
+        # Publish current FSM state to /fsm/state
         msg = String()
         msg.data = self.mode.name
         self.state_pub.publish(msg)
@@ -199,6 +202,8 @@ class BehaviorFSM(Node):
                         pass
 
         self._register_bump_event(pressed)
+        # Debug: log bump event and mode
+        self.get_logger().debug(f"Bump event: {pressed}, mode: {self.mode}")
 
     def _on_bumper_contacts(self, msg: ContactsState):
         """
@@ -235,13 +240,17 @@ class BehaviorFSM(Node):
             pressed
             and self._bumper_contact_streak >= 1
             and (now - self._last_bumper_switch_ts) >= self._bumper_cooldown_s
-            and self.mode != Mode.FOLLOW
+            and self.mode == Mode.PENTAGON
         )
-
         if should_switch:
             self.get_logger().info("Bump detected → switching to FOLLOW.")
             self._last_bumper_switch_ts = now
             self._switch_to_follow()
+        # Log for debugging
+        self.get_logger().debug(
+            f"register_bump_event: pressed={pressed}, streak={self._bumper_contact_streak}, "
+            f"mode={self.mode}, should_switch={should_switch}"
+        )
 
     def _on_scan(self, msg: LaserScan):
         """(Co-Pilot was used to write this docstring)
@@ -264,9 +273,14 @@ class BehaviorFSM(Node):
             and (d <= thr)
             for d in msg.ranges
         )
+        prev_has_target = self._has_target_now
         self._has_target_now = has_target
         if has_target:
             self._last_seen_ts = time.monotonic()
+        # Log for debugging
+        self.get_logger().debug(
+            f"_on_scan: has_target_now={self._has_target_now}, prev_has_target={prev_has_target}, mode={self.mode}"
+        )
 
     def _tick(self):
         """
@@ -284,6 +298,9 @@ class BehaviorFSM(Node):
                 if self._last_seen_ts is None
                 else (now - self._last_seen_ts)
             )
+            self.get_logger().debug(
+                f"_tick: mode=FOLLOW, no_view_duration={no_view_duration:.2f}, lost_object_timeout_s={self.lost_object_timeout_s}, spin_in_progress={self._spin_in_progress.is_set()}"
+            )
             if (
                 no_view_duration > self.lost_object_timeout_s
                 and not self._spin_in_progress.is_set()
@@ -292,6 +309,10 @@ class BehaviorFSM(Node):
                     f"FOLLOW: lost target for {no_view_duration:.1f}s → switching back to PENTAGON."
                 )
                 self._start_pentagon()
+        # Allow estop recovery from IDLE
+        if self.mode == Mode.IDLE and not self.estopped:
+            self.get_logger().info("ESTOP cleared → resuming PENTAGON.")
+            self._start_pentagon()
 
     # -------------------- Spin scheduler --------------------
 
@@ -345,28 +366,30 @@ class BehaviorFSM(Node):
                 spin_cmd, stdout=sys.stdout, stderr=sys.stderr, preexec_fn=os.setsid
             )
             while spin_proc.poll() is None:
-                # Wait until the spin process exits
                 time.sleep(0.05)
         except Exception as e:
             self.get_logger().error(f"Failed to launch spin: {e}")
-        # Resume FOLLOW after completing the spin
         self.get_logger().info("Resuming FOLLOW after spin.")
         self._spawn_behavior(["ros2", "run", "ros_behaviors_fsm", "person_follower"])
         self.mode = Mode.FOLLOW
         self._last_seen_ts = time.monotonic() if self._has_target_now else None
         self._last_spin_ts = time.monotonic()
         self._spin_in_progress.clear()
+        self._publish_state()  # <-- Ensure state is published on every transition
 
     # -------------------- Process Management --------------------
 
     def _start_pentagon(self):
+        # Transition to pentagon behavior
         with self._proc_lock:
             self._spawn_behavior(["ros2", "run", "ros_behaviors_fsm", "draw_pentagon"])
             self.mode = Mode.PENTAGON
             self._last_seen_ts = None
             self._has_target_now = False
+            self._publish_state()  # <-- Ensure state is published on every transition
 
     def _switch_to_follow(self):
+        # Transition to follow behavior
         with self._proc_lock:
             self._spawn_behavior(
                 ["ros2", "run", "ros_behaviors_fsm", "person_follower"]
@@ -374,6 +397,7 @@ class BehaviorFSM(Node):
             self.mode = Mode.FOLLOW
             self._last_seen_ts = time.monotonic() if self._has_target_now else None
             self._last_spin_ts = time.monotonic()
+            self._publish_state()  # <-- Ensure state is published on every transition
 
     def _spawn_behavior(self, cmd):
         """(Co-Pilot was used to write this docstring)
@@ -398,12 +422,14 @@ class BehaviorFSM(Node):
             self.child_proc = None
 
     def _publish_stop(self):
+        # Publish zero velocity to stop robot
         msg = Twist()
         msg.linear.x = 0.0
         msg.angular.z = 0.0
         self.vel_pub.publish(msg)
 
     def _kill_child(self):
+        # Kill running behavior subprocess
         if self.child_proc is None:
             return
         if self.child_proc.poll() is not None:
@@ -423,6 +449,7 @@ class BehaviorFSM(Node):
             self.child_proc = None
 
     def destroy_node(self):
+        # Clean up on shutdown
         try:
             self._kill_child()
             self._publish_stop()
